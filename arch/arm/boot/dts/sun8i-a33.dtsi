@@ -49,12 +49,16 @@
 		cpu@2 {
 			compatible = "arm,cortex-a7";
 			device_type = "cpu";
+                        clocks = <&cpu>;
+                        clock-frequency = <1000000000>;
 			reg = <2>;
 		};
 
 		cpu@3 {
 			compatible = "arm,cortex-a7";
 			device_type = "cpu";
+                        clocks = <&cpu>;
+                        clock-frequency = <1000000000>;
 			reg = <3>;
 		};
 	};
