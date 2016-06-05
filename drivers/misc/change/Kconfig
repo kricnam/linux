@@ -1,0 +1,12 @@
+#
+# TI's shared transport line discipline and the protocol
+# drivers (BT, FM and GPS)
+#
+menu "Chang'e signal generator driver"
+config CHANGE_SIGNAL_GENERATOR
+	tristate "suqre wave signal generator  driver"
+	depends on  GPIOLIB && TTY
+	help
+	  this will make a suqare wave signal device driver.
+
+endmenu
