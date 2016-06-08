@@ -9,6 +9,8 @@
 #include <linux/types.h>
 #include <linux/platform_device.h>
 #include <linux/gpio.h>
+#include <linux/delay.h>
+#include <linux/kthread.h>
 
 MODULE_AUTHOR("kricnam<me.xinxin@gmail.com>");
 
@@ -40,7 +42,46 @@ static struct gpio dac0800_gpios[] = {
   { 360,GPIOF_OUT_INIT_HIGH,"E1"},
 };
 
+static struct task_struct *thread1;
 
+static int wave_pulse(void* data)
+{
+  int i;
+  i = 0;
+  do
+    {
+      udelay(3);
+      gpio_set_value(355,i);
+      i=~i;
+    }while(!kthread_should_stop());
+  return 0;
+}
+
+
+static int thread_init(void)
+{
+  char name[]="pulse_wave";
+  printk("in thread\n");
+  thread1 = kthread_create(wave_pulse,NULL,name);
+  if (thread1)
+    {
+      printk(KERN_INFO "run thread\n");
+      wake_up_process(thread1);
+    }
+  else
+    {
+      printk(KERN_INFO "thread fail\n");
+    }
+  return 0;
+}
+
+static void thread_cleanup(void)
+{
+  int ret;
+  ret = kthread_stop(thread1);
+  if (!ret)
+    printk(KERN_INFO "therad stopped");
+}
 
 static int dev_port_init(void)
 {
@@ -60,7 +101,7 @@ static int start(void)
 
 static int stop(void)
 {
- return 0;
+  return 0;
 }
 
 static int dev_sg_open(struct inode *inode, struct file *filp) {
@@ -150,12 +191,15 @@ static int signal_generator_init(void)
  class_fail:
   unregister_chrdev_region(dev,1);
  success:
+  thread_init();
   return result;
 }
  
 static void signal_generator_exit(void)
 {
   printk("<1>Exiting sg module\n");
+  thread_cleanup();
+
   /* Unregister character device */
   cdev_del(&c_dev);
   device_destroy(pulse_class,dev);
