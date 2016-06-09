@@ -11,13 +11,20 @@
 #include <linux/gpio.h>
 #include <linux/delay.h>
 #include <linux/kthread.h>
+#include <linux/ioport.h>
+#include <linux/gpio/driver.h>
+#include <asm/pgtable.h>
+
 
 MODULE_AUTHOR("kricnam<me.xinxin@gmail.com>");
 
 #define SIG_GEN_NAME "pulse"
 #define SG_CMD_START 0
 #define SG_CMD_STOP  1
- 
+
+#define REG_BASE 
+#define REG_PG_DAT REG_BASE + 0xE8
+
 static unsigned int pulse_major = 0;
 static struct cdev c_dev;
 static struct class * pulse_class;
@@ -43,16 +50,60 @@ static struct gpio dac0800_gpios[] = {
 };
 
 static struct task_struct *thread1;
+struct resource * res_pg_dat;
+static void __iomem *   pg_reg_dat;
+static struct gpio_desc * pgpio;
+
+static int request_register(void)
+{
+  res_pg_dat = request_mem_region(REG_PG_DAT,SECTION_SIZE,"PG");
+  if (!res_pg_dat)
+    {
+      pr_err("mm request fail\n");
+      return -1;
+      }
+  pg_reg_dat = ioremap(REG_PG_DAT,SECTION_SIZE);
+  if (!pg_reg_dat)
+    {
+      release_mem_region(REG_PG_DAT,SECTION_SIZE);
+      pr_err("assign reg failed.");
+      return -1;
+      }
+
+  printk("goto iomap %x\n",(int)pg_reg_dat);
+  pgpio = gpio_to_desc(355);
+  if (pgpio)
+    printk("reg iomap:%x\n",(int)(gpiod_to_chip(pgpio)->reg_set));
+  return 0;
+}
+
+static void release_register(void)
+{
+  if (pg_reg_dat)
+    iounmap(pg_reg_dat);
+  if (res_pg_dat)
+    release_mem_region(REG_PG_DAT,SECTION_SIZE);
+}
 
 static int wave_pulse(void* data)
 {
-  int i;
-  i = 0;
+  u16 i;
+  i=0xffff;
   do
     {
-      udelay(3);
-      gpio_set_value(355,i);
-      i=~i;
+      udelay(2);
+      //i = __raw_readw(pg_reg_dat);
+      //printk("read [%x]\n",i);
+      //__change_bit(3,&i);
+      //printk("write [%x]\n",i);
+      //__raw_writew(i,pg_reg_dat);
+      //gpio_set_value(355,i);;
+writew(i,pg_reg_dat);
+
+      
+i = ~i;
+      //set_current_state(TASK_INTERRU;
+      //schedule();
     }while(!kthread_should_stop());
   return 0;
 }
@@ -93,6 +144,8 @@ static int dev_port_init(void)
     gpio_free_array(dac0800_gpios,ARRAY_SIZE(dac0800_gpios));
   return n;
 }
+
+
 
 static int start(void)
 {
@@ -191,7 +244,9 @@ static int signal_generator_init(void)
  class_fail:
   unregister_chrdev_region(dev,1);
  success:
+  request_register();
   thread_init();
+  
   return result;
 }
  
@@ -205,8 +260,9 @@ static void signal_generator_exit(void)
   device_destroy(pulse_class,dev);
   class_destroy(pulse_class);
   unregister_chrdev_region(dev,1);
-    
-  //unregister_chrdev(SIG_GEN_MAJOR, SIG_GEN_NAME); 
+  
+  release_register();
+  
   return;
 }
 
