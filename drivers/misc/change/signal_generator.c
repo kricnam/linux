@@ -15,6 +15,8 @@
 #include <linux/gpio/driver.h>
 #include <asm/pgtable.h>
 
+#include "../../drivers/pinctrl/sunxi/pinctrl-sunxi.h" 
+#include "../../drivers/gpio/gpiolib.h"
 
 MODULE_AUTHOR("kricnam<me.xinxin@gmail.com>");
 
@@ -52,11 +54,16 @@ static struct gpio dac0800_gpios[] = {
 static struct task_struct *thread1;
 struct resource * res_pg_dat;
 static void __iomem *   pg_reg_dat;
+static void __iomem *   reg_dat;
 static struct gpio_desc * pgpio;
+struct gpio_chip *chip ;
+struct sunxi_pinctrl *pctl;
+u32 reg;
 
 static int request_register(void)
 {
   res_pg_dat = request_mem_region(REG_PG_DAT,SECTION_SIZE,"PG");
+  
   if (!res_pg_dat)
     {
       pr_err("mm request fail\n");
@@ -70,10 +77,18 @@ static int request_register(void)
       return -1;
       }
 
-  printk("goto iomap %x\n",(int)pg_reg_dat);
+  printk("got iomap %x\n",(int)pg_reg_dat);
+  
   pgpio = gpio_to_desc(355);
-  if (pgpio)
-    printk("reg iomap:%x\n",(int)(gpiod_to_chip(pgpio)->reg_set));
+  printk("dev desc lable: %s \n\tname: %s\n",pgpio->label,pgpio->name);
+  chip = gpiod_to_chip(pgpio);
+  printk("reverse check pin %d\n",gpio_chip_hwgpio(pgpio));
+  pctl  = gpiochip_get_data(chip);
+  
+  reg = sunxi_data_reg(3);
+  
+  printk("reg [%d] iomap:%x[%x]\n",reg,(int)(pctl->membase),(int)(pctl->membase + reg));
+  reg_dat = pctl->membase + reg;
   return 0;
 }
 
@@ -87,19 +102,19 @@ static void release_register(void)
 
 static int wave_pulse(void* data)
 {
-  u16 i;
-  i=0xffff;
+  int i;
+  i=0xffffffff;
   do
     {
-      udelay(2);
+      udelay(3);
       //i = __raw_readw(pg_reg_dat);
       //printk("read [%x]\n",i);
       //__change_bit(3,&i);
       //printk("write [%x]\n",i);
       //__raw_writew(i,pg_reg_dat);
       //gpio_set_value(355,i);;
-writew(i,pg_reg_dat);
-
+      writel(i,reg_dat);
+      //chip->set(chip,3,i);
       
 i = ~i;
       //set_current_state(TASK_INTERRU;
