@@ -3,11 +3,13 @@
 # 
 #
 menu "Chang'e signal generator driver"
+
 config CHANGE_WAVES_DAC0800
 	tristate "suqre wave signal generator  driver on dac0800"
 	depends on  GPIOLIB && TTY
 	help
 	  this will make a suqare wave signal device driver.
+
 config CHANGE_WAVES_DAC7311
 	tristate "suqre wave signal generator  driver on dac7311"
 	depends on  GPIOLIB && TTY

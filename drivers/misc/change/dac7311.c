@@ -347,7 +347,7 @@ static int signal_generator_init(void)
   return result;
 }
  
-static void signal_generator_exit(void)
+static void waves_dac7311_exit(void)
 {
   printk("<1>Exiting sg module\n");
   thread_cleanup();
@@ -367,5 +367,5 @@ static void signal_generator_exit(void)
 
 MODULE_LICENSE("Dual BSD/GPL");
  
-module_init(signal_generator_init);
-module_exit(signal_generator_exit);
+module_init(waves_dac7311_init);
+module_exit(waves_dac7311_exit);
