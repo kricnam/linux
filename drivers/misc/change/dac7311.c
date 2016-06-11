@@ -1,3 +1,5 @@
+/* Device Driver for DAC7311 array */
+
 #include <linux/version.h>
 #include <linux/init.h>
 #include <linux/module.h>
@@ -20,11 +22,9 @@
 #include "../../drivers/pinctrl/sunxi/pinctrl-sunxi.h" 
 #include "../../drivers/gpio/gpiolib.h"
 
-#include "dac7311.h"
-
 MODULE_AUTHOR("kricnam<me.xinxin@gmail.com>");
 
-#define SIG_GEN_NAME "pulse"
+#define SIG_GEN_NAME "dac7311"
 #define SG_CMD_START 0
 #define SG_CMD_STOP  1
 
@@ -36,78 +36,128 @@ static struct cdev c_dev;
 static struct class * pulse_class;
 static dev_t dev=0;
 
-struct hrtimer pulse_timer;
-
-/* TODO: make de DTS compatitable code */
-static struct gpio dac0800_gpios[] = {
-   { 192, GPIOF_OUT_INIT_LOW, "D0" },
-  { 193, GPIOF_OUT_INIT_LOW,  "D1" }, 
-  { 194, GPIOF_OUT_INIT_LOW,  "D2"   },
-  { 195, GPIOF_OUT_INIT_LOW,  "D3"  },
-  { 196,GPIOF_OUT_INIT_LOW,"D4"},
-  { 197,GPIOF_OUT_INIT_LOW,"D5"},
-  { 198,GPIOF_OUT_INIT_LOW,"D6"},
-  { 199,GPIOF_OUT_INIT_LOW,"D7"},
-  { 200,GPIOF_OUT_INIT_LOW,"OE"},
-  { 355,GPIOF_OUT_INIT_LOW,"A0"},
-  { 356,GPIOF_OUT_INIT_LOW,"A1"},
-  { 357,GPIOF_OUT_INIT_LOW,"A3"},
-  { 358,GPIOF_OUT_INIT_LOW,"A4"},
-  { 359,GPIOF_OUT_INIT_HIGH,"E0"},
-  { 360,GPIOF_OUT_INIT_HIGH,"E1"},
-};
-
 static struct task_struct *thread1;
 struct resource * res_pg_dat;
-//static void __iomem *   pg_reg_dat;
-static void __iomem *   reg_dat;
+
 static struct gpio_desc * pgpio;
 struct gpio_chip *chip ;
 struct sunxi_pinctrl *pctl;
 u32 reg;
-u32 value;
 
-static int request_register(void)
+#define DIN1_GPIO_NUM 114
+#define DIN2_GPIO_NUM 115
+#define DIN3_GPIO_NUM 116
+#define DIN4_GPIO_NUM 117
+#define DIN5_GPIO_NUM 118
+#define DIN6_GPIO_NUM 119
+#define DIN7_GPIO_NUM 120
+#define DIN8_GPIO_NUM 121
+#define DIN9_GPIO_NUM 122
+#define DIN10_GPIO_NUM 123
+#define SYNC1_GPIO_NUM 98
+#define SYNC2_GPIO_NUM 99
+#define SYNC3_GPIO_NUM 100
+#define SYNC4_GPIO_NUM 101
+#define SYNC5_GPIO_NUM 102
+#define SYNC6_GPIO_NUM 103
+#define SYNC7_GPIO_NUM 106
+#define SYNC8_GPIO_NUM 107
+#define SYNC9_GPIO_NUM 108
+#define SYNC10_GPIO_NUM 109
+#define SCLK_GPIO_NUM 110
+
+static struct gpio dac7311_gpios[] = {
+  {SYNC1_GPIO_NUM, GPIOF_OUT_INIT_LOW, "SYNC1"},
+  {SYNC2_GPIO_NUM, GPIOF_OUT_INIT_LOW, "SYNC2"},
+  {SYNC3_GPIO_NUM, GPIOF_OUT_INIT_LOW, "SYNC3"},
+  {SYNC4_GPIO_NUM, GPIOF_OUT_INIT_LOW, "SYNC4"},
+  {SYNC5_GPIO_NUM, GPIOF_OUT_INIT_LOW, "SYNC5"},
+  {SYNC6_GPIO_NUM, GPIOF_OUT_INIT_LOW, "SYNC6"},
+  {SYNC7_GPIO_NUM, GPIOF_OUT_INIT_LOW, "SYNC7"},
+  {SYNC8_GPIO_NUM, GPIOF_OUT_INIT_LOW, "SYNC8"},
+  {SYNC9_GPIO_NUM, GPIOF_OUT_INIT_LOW, "SYNC9"},
+  {SYNC10_GPIO_NUM, GPIOF_OUT_INIT_LOW, "SYNC10"},
+  {SCLK_GPIO_NUM, GPIOF_OUT_INIT_HIGH, "SCLK"},
+  {DIN1_GPIO_NUM, GPIOF_OUT_INIT_LOW, "DIN1"},
+  {DIN2_GPIO_NUM, GPIOF_OUT_INIT_LOW, "DIN2"},
+  {DIN3_GPIO_NUM, GPIOF_OUT_INIT_LOW, "DIN3"},
+  {DIN4_GPIO_NUM, GPIOF_OUT_INIT_LOW, "DIN4"},
+  {DIN5_GPIO_NUM, GPIOF_OUT_INIT_LOW, "DIN5"},
+  {DIN6_GPIO_NUM, GPIOF_OUT_INIT_LOW, "DIN6"},
+  {DIN7_GPIO_NUM, GPIOF_OUT_INIT_LOW, "DIN7"},
+  {DIN8_GPIO_NUM, GPIOF_OUT_INIT_LOW, "DIN8"},
+  {DIN9_GPIO_NUM, GPIOF_OUT_INIT_LOW, "DIN9"},
+  {DIN10_GPIO_NUM, GPIOF_OUT_INIT_LOW, "DIN10"},
+} ; 
+
+
+#define DAC7311_CLK_BIT 14
+#define REG_DAT_START_BIT 18
+static void __iomem* dac7311_reg;
+static volatile unsigned long reg_output;
+
+static unsigned short dac7311_outputs[10];
+
+
+static int dac7311_get_register(void)
 {
-  //res_pg_dat = request_mem_region(REG_PG_DAT,SECTION_SIZE,"PG");
-  
-  //if (!res_pg_dat)
-  //  {
-  //    pr_err("mm request fail\n");
-  //    return -1;
-  //    }
-  //pg_reg_dat = ioremap(REG_PG_DAT,SECTION_SIZE);
- // if (!pg_reg_dat)
-  //  {
-  //    release_mem_region(REG_PG_DAT,SECTION_SIZE);
-  //    pr_err("assign reg failed.");
-  //    return -1;
-  //    }
-
-  //printk("got iomap %x\n",(int)pg_reg_dat);
-  
-  pgpio = gpio_to_desc(355);
-  printk("dev desc lable: %s \n\tname: %s\n",pgpio->label,pgpio->name);
-  chip = gpiod_to_chip(pgpio);
-  printk("reverse check pin %d\n",gpio_chip_hwgpio(pgpio));
-  pctl  = gpiochip_get_data(chip);
-  
-  reg = sunxi_data_reg(3);
-  
-  printk("reg [%d] iomap:%x[%x]\n",reg,(int)(pctl->membase),(int)(pctl->membase + reg));
-  reg_dat = pctl->membase + reg;
-
-  dac7311_port_init();
+  struct gpio_desc* gpio_dac;
+  struct gpio_chip* chip;
+  struct sunxi_pinctrl* pctl;
+  gpio_dac = gpio_to_desc(SYNC1_GPIO_NUM);
+  printk("find dac7311 gpio: %s-%s\n",gpio_dac->label,gpio_dac->name);
+  chip = gpiod_to_chip(gpio_dac);
+  pctl = gpiochip_get_data(chip);
+  dac7311_reg = pctl->membase + sunxi_data_reg(gpio_chip_hwgpio(gpio_dac));
   return 0;
-}
+};
 
-static void release_register(void)
+static int dac7311_port_init(void)
 {
-  //if (pg_reg_dat)
-  //  iounmap(pg_reg_dat);
-  //if (res_pg_dat)
-  //  release_mem_region(REG_PG_DAT,SECTION_SIZE);
-}
+  int n;
+  n = gpio_request_array(dac7311_gpios,ARRAY_SIZE(dac7311_gpios));
+
+  if (n)
+    pr_err("DAC7311 port init fail = %d.\n",n);
+  else
+   {
+    gpio_free_array(dac7311_gpios,ARRAY_SIZE(dac7311_gpios));
+    n = dac7311_get_register();
+    }
+  return n;
+};
+
+
+
+static inline void assemble_bits(int i)
+{
+  int n;
+  unsigned short mask;
+  mask = 1UL << i;
+  reg_output=0UL;
+  for(n =0 ; n < 10; n++)
+    {
+      if ( dac7311_outputs[i] & mask)
+        __set_bit(REG_DAT_START_BIT+n,&reg_output);
+    }    
+  
+};
+
+
+static inline void set_dac7311_output(void)
+{
+  int i;
+  
+  for(i=1;i>0;i--)
+    {
+      assemble_bits(i);
+      __set_bit(DAC7311_CLK_BIT,&reg_output);
+      writel(reg_output,dac7311_reg);
+      __clear_bit(DAC7311_CLK_BIT,&reg_output);
+      writel(reg_output,dac7311_reg);
+    }
+  
+};
 
 static int wave_pulse(void* data)
 {
@@ -155,29 +205,6 @@ static int wave_pulse(void* data)
     }while(!kthread_should_stop());
   return 0;
 }
-
-static void pulse_out(struct hrtimer *timer)
-{
-   value = ~value;
-   writel(value,reg_dat);
-   hrtimer_forward_now(&pulse_timer, ktime_set(0,3000));
-	return HRTIMER_RESTART;
-}
-
-
-static enum hrtimer_restart pulse_timer_init(void)
-{
-
-	 hrtimer_init(&pulse_timer,CLOCK_MONOTONIC,HRTIMER_MODE_REL);
-	 //pulse_delay = ktime_set(0, 3000);
-
-	 pulse_timer.function = pulse_out;
-
-
-	 hrtimer_start(&pulse_timer, ktime_set(0,3000), HRTIMER_MODE_REL);
-
-}
-
 
 static int thread_init(void)
 {
