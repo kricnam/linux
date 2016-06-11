@@ -15,16 +15,15 @@
 #include <linux/gpio/driver.h>
 #include <linux/timekeeping.h>
 #include <asm/pgtable.h>
-#include <linux/hrtimer.h>
 
 #include "../../drivers/pinctrl/sunxi/pinctrl-sunxi.h" 
 #include "../../drivers/gpio/gpiolib.h"
 
-#include "dac7311.h"
+
 
 MODULE_AUTHOR("kricnam<me.xinxin@gmail.com>");
 
-#define SIG_GEN_NAME "pulse"
+#define SIG_GEN_NAME "waves_dac0800"
 #define SG_CMD_START 0
 #define SG_CMD_STOP  1
 
@@ -59,7 +58,7 @@ static struct gpio dac0800_gpios[] = {
 
 static struct task_struct *thread1;
 struct resource * res_pg_dat;
-//static void __iomem *   pg_reg_dat;
+
 static void __iomem *   reg_dat;
 static struct gpio_desc * pgpio;
 struct gpio_chip *chip ;
@@ -67,25 +66,8 @@ struct sunxi_pinctrl *pctl;
 u32 reg;
 u32 value;
 
-static int request_register(void)
+static int get_dac0800_reg(void)
 {
-  //res_pg_dat = request_mem_region(REG_PG_DAT,SECTION_SIZE,"PG");
-  
-  //if (!res_pg_dat)
-  //  {
-  //    pr_err("mm request fail\n");
-  //    return -1;
-  //    }
-  //pg_reg_dat = ioremap(REG_PG_DAT,SECTION_SIZE);
- // if (!pg_reg_dat)
-  //  {
-  //    release_mem_region(REG_PG_DAT,SECTION_SIZE);
-  //    pr_err("assign reg failed.");
-  //    return -1;
-  //    }
-
-  //printk("got iomap %x\n",(int)pg_reg_dat);
-  
   pgpio = gpio_to_desc(355);
   printk("dev desc lable: %s \n\tname: %s\n",pgpio->label,pgpio->name);
   chip = gpiod_to_chip(pgpio);
@@ -97,91 +79,29 @@ static int request_register(void)
   printk("reg [%d] iomap:%x[%x]\n",reg,(int)(pctl->membase),(int)(pctl->membase + reg));
   reg_dat = pctl->membase + reg;
 
-  dac7311_port_init();
-  return 0;
-}
 
-static void release_register(void)
-{
-  //if (pg_reg_dat)
-  //  iounmap(pg_reg_dat);
-  //if (res_pg_dat)
-  //  release_mem_region(REG_PG_DAT,SECTION_SIZE);
+  return 0;
 }
 
 static int wave_pulse(void* data)
 {
   volatile unsigned long i;
-  struct timespec next;
-  struct timespec now;
-  next = current_kernel_time();
-  now = current_kernel_time();
-  i=0xffffffff;
-  next.tv_nsec += 100;
-  next.tv_sec += next.tv_nsec / 1000000000;
-  next.tv_nsec = next.tv_nsec % 1000000000;
-  printk("now:\t%u:%u\n",now.tv_sec,now.tv_nsec);
-  printk("next:\t%u.%u\n",next.tv_sec,next.tv_nsec);
+ 
   do
     {
-      do
-        {
-          now = current_kernel_time();
-         }
-      while((now.tv_sec <= next.tv_sec) && (now.tv_nsec < next.tv_nsec));
-        
-      
-      //udelay(3);
-      //i = __raw_readl(reg_dat);
-      //printk("read [%x]\n",i);
-      //__change_bit(3,reg_dat);
+       udelay(3);
+ 
       i ^= 0x08;
-      //printk("write [%x]\n",i);
-      //__raw_writew(i,pg_reg_dat);
-      //gpio_set_value(355,i);;
+
        writel(i,reg_dat);
-      //chip->set(chip,3,i);
-       set_dac7311_output();  
-      //i = ~i;
-      //set_current_state(TASK_INTERRU;
-      //schedule();
-      next.tv_nsec+=100;
-      next.tv_sec += next.tv_nsec / 1000000000;
-      next.tv_nsec = next.tv_nsec % 1000000000;
-      //printk("next\n");
-      //printk("now:\t%u.%09u\n",now.tv_sec,now.tv_nsec);
-      //printk("next:\t%u.%u\n",next.tv_sec,next.tv_nsec);
       
     }while(!kthread_should_stop());
   return 0;
 }
 
-static void pulse_out(struct hrtimer *timer)
-{
-   value = ~value;
-   writel(value,reg_dat);
-   hrtimer_forward_now(&pulse_timer, ktime_set(0,3000));
-	return HRTIMER_RESTART;
-}
-
-
-static enum hrtimer_restart pulse_timer_init(void)
-{
-
-	 hrtimer_init(&pulse_timer,CLOCK_MONOTONIC,HRTIMER_MODE_REL);
-	 //pulse_delay = ktime_set(0, 3000);
-
-	 pulse_timer.function = pulse_out;
-
-
-	 hrtimer_start(&pulse_timer, ktime_set(0,3000), HRTIMER_MODE_REL);
-
-}
-
-
 static int thread_init(void)
 {
-  char name[]="pulse_wave";
+  char name[]="waves_dac0800";
   printk("in thread\n");
   thread1 = kthread_create(wave_pulse,NULL,name);
   if (thread1)
@@ -211,7 +131,10 @@ static int dev_port_init(void)
   if (n)
     printk(KERN_ALERT "gpio request error.\n");
   else
+  {
     gpio_free_array(dac0800_gpios,ARRAY_SIZE(dac0800_gpios));
+    get_dac0800_reg();
+  }
   return n;
 }
 
@@ -285,7 +208,7 @@ static int signal_generator_init(void)
   }
   pulse_major = MAJOR(dev);
   
-  pulse_class = class_create(THIS_MODULE,"chardrv");
+  pulse_class = class_create(THIS_MODULE,"waves_dac0800");
   if (IS_ERR(pulse_class)) {
     result = PTR_ERR(pulse_class);
     printk(KERN_ALERT "class_create fail\n");
@@ -314,9 +237,9 @@ static int signal_generator_init(void)
  class_fail:
   unregister_chrdev_region(dev,1);
  success:
-  request_register();
-  //thread_init();
-  pulse_timer_init();
+
+  thread_init();
+  
   return result;
 }
  
@@ -330,8 +253,6 @@ static void signal_generator_exit(void)
   device_destroy(pulse_class,dev);
   class_destroy(pulse_class);
   unregister_chrdev_region(dev,1);
-  
-  release_register();
   
   return;
 }

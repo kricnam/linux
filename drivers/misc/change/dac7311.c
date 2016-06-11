@@ -28,9 +28,6 @@ MODULE_AUTHOR("kricnam<me.xinxin@gmail.com>");
 #define SG_CMD_START 0
 #define SG_CMD_STOP  1
 
-#define REG_BASE 
-#define REG_PG_DAT REG_BASE + 0xE8
-
 static unsigned int pulse_major = 0;
 static struct cdev c_dev;
 static struct class * pulse_class;
@@ -39,13 +36,13 @@ static dev_t dev=0;
 static struct task_struct *thread1;
 struct resource * res_pg_dat;
 
-static struct gpio_desc * pgpio;
+
 struct gpio_chip *chip ;
 struct sunxi_pinctrl *pctl;
 u32 reg;
 
-#define DIN1_GPIO_NUM 114
-#define DIN2_GPIO_NUM 115
+#define DIN1_GPIO_NUM 114  //PD18
+#define DIN2_GPIO_NUM 115  //PD19 
 #define DIN3_GPIO_NUM 116
 #define DIN4_GPIO_NUM 117
 #define DIN5_GPIO_NUM 118
@@ -53,18 +50,18 @@ u32 reg;
 #define DIN7_GPIO_NUM 120
 #define DIN8_GPIO_NUM 121
 #define DIN9_GPIO_NUM 122
-#define DIN10_GPIO_NUM 123
-#define SYNC1_GPIO_NUM 98
+#define DIN10_GPIO_NUM 123  //PD27
+#define SYNC1_GPIO_NUM 98   //PD2
 #define SYNC2_GPIO_NUM 99
 #define SYNC3_GPIO_NUM 100
 #define SYNC4_GPIO_NUM 101
-#define SYNC5_GPIO_NUM 102
-#define SYNC6_GPIO_NUM 103
-#define SYNC7_GPIO_NUM 106
+#define SYNC5_GPIO_NUM 102  //PD7
+#define SYNC6_GPIO_NUM 103  //PD11
+#define SYNC7_GPIO_NUM 106  
 #define SYNC8_GPIO_NUM 107
 #define SYNC9_GPIO_NUM 108
 #define SYNC10_GPIO_NUM 109
-#define SCLK_GPIO_NUM 110
+#define SCLK_GPIO_NUM 110   //PD14
 
 static struct gpio dac7311_gpios[] = {
   {SYNC1_GPIO_NUM, GPIOF_OUT_INIT_LOW, "SYNC1"},
@@ -148,77 +145,42 @@ static inline void set_dac7311_output(void)
 {
   int i;
   
-  for(i=1;i>0;i--)
+  for(i=15;i>=0;i--)
     {
       assemble_bits(i);
       __set_bit(DAC7311_CLK_BIT,&reg_output);
       writel(reg_output,dac7311_reg);
+      udelay(3);
       __clear_bit(DAC7311_CLK_BIT,&reg_output);
       writel(reg_output,dac7311_reg);
+      udelay(3);
     }
   
 };
 
 static int wave_pulse(void* data)
 {
-  volatile unsigned long i;
-  struct timespec next;
-  struct timespec now;
-  next = current_kernel_time();
-  now = current_kernel_time();
-  i=0xffffffff;
-  next.tv_nsec += 100;
-  next.tv_sec += next.tv_nsec / 1000000000;
-  next.tv_nsec = next.tv_nsec % 1000000000;
-  printk("now:\t%u:%u\n",now.tv_sec,now.tv_nsec);
-  printk("next:\t%u.%u\n",next.tv_sec,next.tv_nsec);
+  //volatile unsigned long i;
   do
     {
-      do
-        {
-          now = current_kernel_time();
-         }
-      while((now.tv_sec <= next.tv_sec) && (now.tv_nsec < next.tv_nsec));
-        
-      
-      //udelay(3);
-      //i = __raw_readl(reg_dat);
-      //printk("read [%x]\n",i);
-      //__change_bit(3,reg_dat);
-      i ^= 0x08;
-      //printk("write [%x]\n",i);
-      //__raw_writew(i,pg_reg_dat);
-      //gpio_set_value(355,i);;
-       writel(i,reg_dat);
-      //chip->set(chip,3,i);
        set_dac7311_output();  
-      //i = ~i;
-      //set_current_state(TASK_INTERRU;
-      //schedule();
-      next.tv_nsec+=100;
-      next.tv_sec += next.tv_nsec / 1000000000;
-      next.tv_nsec = next.tv_nsec % 1000000000;
-      //printk("next\n");
-      //printk("now:\t%u.%09u\n",now.tv_sec,now.tv_nsec);
-      //printk("next:\t%u.%u\n",next.tv_sec,next.tv_nsec);
-      
     }while(!kthread_should_stop());
   return 0;
 }
 
 static int thread_init(void)
 {
-  char name[]="pulse_wave";
-  printk("in thread\n");
+  char name[]="waves_dac7311";
+  printk("init thread\n");
   thread1 = kthread_create(wave_pulse,NULL,name);
   if (thread1)
     {
-      printk(KERN_INFO "run thread\n");
+      printk(KERN_INFO "run %s thread\n",name);
       wake_up_process(thread1);
     }
   else
     {
-      printk(KERN_INFO "thread fail\n");
+      printk(KERN_INFO "thread %s fail\n",name);
     }
   return 0;
 }
@@ -230,18 +192,6 @@ static void thread_cleanup(void)
   if (!ret)
     printk(KERN_INFO "therad stopped");
 }
-
-static int dev_port_init(void)
-{
-  int n = 0;
-  n = gpio_request_array(dac0800_gpios, ARRAY_SIZE(dac0800_gpios));
-  if (n)
-    printk(KERN_ALERT "gpio request error.\n");
-  else
-    gpio_free_array(dac0800_gpios,ARRAY_SIZE(dac0800_gpios));
-  return n;
-}
-
 
 
 static int start(void)
@@ -299,12 +249,12 @@ static struct file_operations dev_sg_fops = {
 };
 
 
-static int signal_generator_init(void)
+static int waves_dac7311_init(void)
 {
   int result = 0;
 
-  printk("<1>Inserting sg module\n");
-  result = dev_port_init();
+  printk("<1>Inserting waves_dac7311 module\n");
+  result = dac7311_port_init();
   result = alloc_chrdev_region(&dev,0,1,SIG_GEN_NAME);
   if (0 > result)    {
     printk(KERN_ALERT "Device Registration failed.\n");
@@ -312,7 +262,7 @@ static int signal_generator_init(void)
   }
   pulse_major = MAJOR(dev);
   
-  pulse_class = class_create(THIS_MODULE,"chardrv");
+  pulse_class = class_create(THIS_MODULE,"wave_dac7311");
   if (IS_ERR(pulse_class)) {
     result = PTR_ERR(pulse_class);
     printk(KERN_ALERT "class_create fail\n");
@@ -341,9 +291,7 @@ static int signal_generator_init(void)
  class_fail:
   unregister_chrdev_region(dev,1);
  success:
-  request_register();
-  //thread_init();
-  pulse_timer_init();
+    thread_init();
   return result;
 }
  
@@ -357,8 +305,6 @@ static void waves_dac7311_exit(void)
   device_destroy(pulse_class,dev);
   class_destroy(pulse_class);
   unregister_chrdev_region(dev,1);
-  
-  release_register();
   
   return;
 }
